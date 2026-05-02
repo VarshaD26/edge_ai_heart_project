@@ -1,9 +1,7 @@
 import streamlit as st
 import numpy as np
-import tensorflow as tf
 import time
 import os
-import joblib
 import pyttsx3
 import threading
 
@@ -17,9 +15,12 @@ st.set_page_config(layout="wide")
 # -------------------------------
 def speak(text):
     def run():
-        engine = pyttsx3.init()
-        engine.say(text)
-        engine.runAndWait()
+        try:
+            engine = pyttsx3.init()
+            engine.say(text)
+            engine.runAndWait()
+        except:
+            pass  # prevent crash on cloud
     threading.Thread(target=run).start()
 
 if "last_spoken" not in st.session_state:
@@ -31,24 +32,21 @@ def speak_once(text):
         st.session_state.last_spoken = text
 
 # -------------------------------
-# LOAD MODEL + SCALER
-# -------------------------------
-model = tf.keras.models.load_model("model.keras", compile=False)
-mean, std = joblib.load("scaler.pkl")
-
-# -------------------------------
 # UI STYLE
 # -------------------------------
 st.markdown("""
 <style>
-.stApp {background-color: #0e1117; color: white;}
+.stApp {
+    background-color: #0e1117;
+    color: white;
+}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🏥 AI Cardiac Emergency Dashboard")
 
 # -------------------------------
-# SIDEBAR INPUT
+# INPUT SECTION
 # -------------------------------
 st.sidebar.header("🧾 Patient Data")
 
@@ -58,7 +56,7 @@ chol = st.sidebar.slider("Cholesterol", 100, 400)
 hr = st.sidebar.slider("Heart Rate", 60, 200)
 
 # -------------------------------
-# TOP METRICS
+# DASHBOARD METRICS
 # -------------------------------
 col1, col2, col3 = st.columns(3)
 col1.metric("Age", age)
@@ -66,13 +64,7 @@ col2.metric("Heart Rate", hr)
 col3.metric("Blood Pressure", bp)
 
 # -------------------------------
-# PREPROCESS INPUT
-# -------------------------------
-input_data = np.array([[age, bp, chol, hr]])
-input_data = (input_data - mean.values) / std.values
-
-# -------------------------------
-# PREDICTION
+# PREDICTION (EDGE LOGIC)
 # -------------------------------
 pred = None
 latency = None
@@ -80,20 +72,19 @@ latency = None
 if st.sidebar.button("Analyze"):
     start = time.time()
 
-    # ML prediction
-    pred = float(model.predict(input_data, verbose=0)[0][0])
+    # Lightweight Edge AI logic
+    score = 0
 
-    # -------------------------------
-    # HYBRID LOGIC (FIXES WRONG OUTPUT)
-    # -------------------------------
-    if age > 60 and bp > 160:
-        pred = max(pred, 0.8)
+    if age > 50:
+        score += 0.25
+    if bp > 140:
+        score += 0.25
+    if chol > 240:
+        score += 0.25
+    if hr < 60 or hr > 150:
+        score += 0.25
 
-    if chol > 280:
-        pred = max(pred, 0.7)
-
-    if hr < 60 or hr > 180:
-        pred = max(pred, 0.75)
+    pred = min(score, 1.0)
 
     latency = (time.time() - start) * 1000
 
@@ -167,14 +158,14 @@ st.line_chart(chart_data)
 # -------------------------------
 # EDGE AI METRICS
 # -------------------------------
-size = os.path.getsize("model.keras") / (1024 * 1024)
-st.write(f"📦 Model Size: {size:.2f} MB")
+st.subheader("⚙️ Edge AI Metrics")
 
+st.write("📦 Model Size: Lightweight (No external model)")
 if latency:
     st.write(f"⚡ Latency: {latency:.2f} ms")
     st.write(f"🔋 Efficiency Score: {1000/latency:.2f}")
 
 # -------------------------------
-# INFO
+# FOOTER
 # -------------------------------
-st.caption("Hybrid AI system: Deep Learning + Rule-based logic (Edge AI, no cloud)")
+st.caption("Edge AI-based cardiac monitoring system (on-device, no cloud dependency)")
